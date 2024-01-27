@@ -90,19 +90,18 @@ class App:
         self.window.protocol("WM_DELETE_WINDOW", self.on_closing)
 
         self.running = threading.Event()
-        self.running_lock = threading.Lock()
-        self.rx_queue = queue.Queue()
+        self.rx_queue = queue.Queue(100)
         self.rx_thread = threading.Thread(target=self.rx_main)
-        self.plot_thread = threading.Thread(target=self.plot_main)
+
 
     def on_closing(self):
         self.running.clear()
-        self.rx_thread.join()
-        self.plot_thread.join()
         self.window.destroy()
 
     def rx_main(self):
         buf = bytearray(self.buf_len)
+        ydata = np.zeros(self.buf_len)
+        fdata = np.zeros(self.buf_len)
         while self.running.is_set():
             try:
                 r = self.serial_if.readinto(buf)
@@ -111,28 +110,26 @@ class App:
             if r < self.buf_len:
                 print(f"read underrun: {r}")
                 continue
-            self.rx_queue.put(buf)
-    
-    def plot_main(self):
-        ydata = np.zeros(self.buf_len)
-        while self.running.is_set():
+
+            for i, x in enumerate(buf):
+                    ydata[i] = np.float64(x)
+            fdata = np.fft.fftshift(20 * np.log10(np.abs(np.fft.fft(ydata) / self.buf_len)))
             try:
-                buf = self.rx_queue.get(timeout=1)
-                print(self.rx_queue.qsize())
-                for i, x in enumerate(buf):
-                        ydata[i] = np.float64(x)
-                fdata = np.fft.fftshift(20 * np.log10(np.abs(np.fft.fft(ydata) / self.buf_len)))
+                self.rx_queue.put((ydata, fdata))
+            except queue.Full:
+                print("write overrun")
+
+    def plot_main(self):
+        if self.running.is_set():
+            try:
+                ydata, fdata = self.rx_queue.get_nowait()
                 self.line_1.set_ydata(ydata)
                 self.line_2.set_ydata(fdata)
-                if self.running.is_set():
-                    self.canvas_1.draw()
-                if self.running.is_set():
-                    self.canvas_1.flush_events()
+                self.canvas_1.draw()
+                self.canvas_1.flush_events()
             except queue.Empty:
-                continue
-            except Exception as e:
-                print(e)
-                break
+                pass
+            self.window.after("idle", self.plot_main)
 
     def tx_cmd(self, addr, val):
         buf = bytearray(2)
@@ -159,10 +156,14 @@ class App:
         self.tx_cmd(0xFF, 0)
 
     def run(self):
-        self.running.set()
-        self.rx_thread.start()
-        self.plot_thread.start()
-        self.window.mainloop()
+        try:
+            self.running.set()
+            self.rx_thread.start()
+            self.window.after(100, self.plot_main)
+            self.window.mainloop()
+        finally:
+            self.running.clear()
+            self.rx_thread.join()
 
 
 def plot_signal(name, fs, n, t, x):
