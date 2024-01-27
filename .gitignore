@@ -11,5 +11,6 @@ sim/work
 src/adc_0
 src/nco_0
 pll_0.*
-!*.qip
+!pll_0.vhd
+nco_0.*
 stp/
