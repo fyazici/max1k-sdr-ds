@@ -1,0 +1,15 @@
+.qsys_edit
+db
+greybox_tmp
+incremental_db
+default.*
+sim/adc_0
+sim/nco_0
+sim/out
+sim/work
+*.bak
+src/adc_0
+src/nco_0
+pll_0.*
+!*.qip
+stp/
