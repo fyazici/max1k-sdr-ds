@@ -80,7 +80,7 @@ class App:
         self.ax_2 = self.figure_1.add_subplot(212)
         self.ax_2.set_ylim(-50, 50)
         self.ax_2.grid()
-        self.line_2, = self.ax_2.plot(np.fft.fftshift(np.fft.fftfreq(self.buf_len, 1 / self.baseband_fs)), np.zeros(self.buf_len))
+        self.line_2, = self.ax_2.plot(np.zeros(self.buf_len))
         self.canvas_1 = FigureCanvasTkAgg(self.figure_1, master=self.plot_window)
         self.canvas_1.draw()
         self.toolbar_1 = NavigationToolbar2Tk(self.canvas_1, self.plot_window)
@@ -90,7 +90,7 @@ class App:
         self.window.protocol("WM_DELETE_WINDOW", self.on_closing)
 
         self.running = threading.Event()
-        self.rx_queue = queue.Queue(100)
+        self.rx_queue = queue.Queue(10)
         self.rx_thread = threading.Thread(target=self.rx_main)
 
 
@@ -101,7 +101,6 @@ class App:
     def rx_main(self):
         buf = bytearray(self.buf_len)
         ydata = np.zeros(self.buf_len)
-        fdata = np.zeros(self.buf_len)
         while self.running.is_set():
             try:
                 r = self.serial_if.readinto(buf)
@@ -110,19 +109,19 @@ class App:
             if r < self.buf_len:
                 print(f"read underrun: {r}")
                 continue
-
             for i, x in enumerate(buf):
                     ydata[i] = np.float64(x)
-            fdata = np.fft.fftshift(20 * np.log10(np.abs(np.fft.fft(ydata) / self.buf_len)))
             try:
-                self.rx_queue.put((ydata, fdata))
+                self.rx_queue.put(ydata, timeout=1)
             except queue.Full:
                 print("write overrun")
 
     def plot_main(self):
+        fdata = np.zeros(self.buf_len)
         if self.running.is_set():
             try:
-                ydata, fdata = self.rx_queue.get_nowait()
+                ydata = self.rx_queue.get(timeout=1)
+                fdata = 20 * np.log10(np.abs(np.fft.fft(ydata) / self.buf_len))
                 self.line_1.set_ydata(ydata)
                 self.line_2.set_ydata(fdata)
                 self.canvas_1.draw()
@@ -144,7 +143,7 @@ class App:
         self.demod_atten = int(self.spn_demod_atten.get())
         self.param_led = int(self.spn_param_led.get())
         print(self.lo_freq, self.mixer_atten, self.if_atten, self.demod_atten, self.param_led)
-        pha_inc = int((2 ** 32) * (1 - (self.lo_freq * 1000 / self.dsp_fs)) + 0.5)
+        pha_inc = int((2 ** 32) * (self.lo_freq * 1000 / self.dsp_fs))
         self.tx_cmd(0x00, (pha_inc      ) & 0xFF)
         self.tx_cmd(0x01, (pha_inc >> 8 ) & 0xFF)
         self.tx_cmd(0x02, (pha_inc >> 16) & 0xFF)
@@ -164,20 +163,6 @@ class App:
         finally:
             self.running.clear()
             self.rx_thread.join()
-
-
-def plot_signal(name, fs, n, t, x):
-    fig, (ax_t, ax_f) = plt.subplots(2, 1)
-    ax_t.set_title(f"{name} time")
-    if x.dtype == np.complex_:
-        ax_t.step(t, x.real)
-        ax_t.step(t, x.imag)
-    else:
-        ax_t.step(t, x)
-    ax_f.set_title(f"{name} freq")
-    fft_out = np.fft.fft(x)
-    ax_f.plot(np.fft.fftfreq(n, 1.0/fs), 20 * np.log10(np.abs(fft_out)), linewidth=1)
-    fig.tight_layout()
 
 
 if __name__ == "__main__":

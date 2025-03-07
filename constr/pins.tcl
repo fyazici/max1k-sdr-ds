@@ -11,7 +11,7 @@ set_location_assignment PIN_C9 -to led[5]
 set_location_assignment PIN_C10 -to led[6]
 set_location_assignment PIN_D8 -to led[7]
 set_location_assignment PIN_E6 -to user_btn
-set_instance_assignment -name IO_STANDARD "2.5 V SCHMITT TRIGGER" -to user_btn
+set_instance_assignment -name IO_STANDARD "3.3 V SCHMITT TRIGGER" -to user_btn
 set_location_assignment PIN_J5 -to sen_int1
 set_location_assignment PIN_L4 -to sen_int2
 set_location_assignment PIN_J7 -to sen_sdi
